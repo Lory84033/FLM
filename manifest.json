@@ -1,0 +1,77 @@
+{
+ "id": "./index.html",
+ "name": "Friendbook",
+ "short_name": "Friendbook",
+ "description": "Chatta con i tuoi amici, pubblica post con foto e sticker, cerca persone. Stile Facebook 2014.",
+ "lang": "it",
+ "dir": "ltr",
+ "start_url": "./index.html?source=pwa",
+ "scope": "./",
+ "display": "standalone",
+ "display_override": [
+  "standalone",
+  "minimal-ui"
+ ],
+ "orientation": "any",
+ "background_color": "#e9eaed",
+ "theme_color": "#3b5998",
+ "categories": [
+  "social",
+  "communication"
+ ],
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "icon-maskable-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ],
+ "shortcuts": [
+  {
+   "name": "Chat",
+   "short_name": "Chat",
+   "url": "./index.html?tab=c&source=shortcut",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192"
+    }
+   ]
+  },
+  {
+   "name": "Post",
+   "short_name": "Post",
+   "url": "./index.html?tab=o&source=shortcut",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192"
+    }
+   ]
+  },
+  {
+   "name": "Amici",
+   "short_name": "Amici",
+   "url": "./index.html?tab=f&source=shortcut",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function keys(k) { return request.resource.data.keys().hasOnly(k); }
+
+    // solo il proprio "mi piace" puo' essere aggiunto o tolto
+    function likeOnly() {
+      return request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lk'])
+        && request.resource.data.lk is list && request.resource.data.lk.size() <= 500
+        && request.resource.data.lk.toSet().difference(resource.data.get('lk', []).toSet()).hasOnly([request.auth.uid])
+        && resource.data.get('lk', []).toSet().difference(request.resource.data.lk.toSet()).hasOnly([request.auth.uid]);
+    }
+
+    // controlli comuni di un nuovo post (testo, sticker, foto, ora)
+    function postOk() {
+      return request.resource.data.x is string && request.resource.data.x.size() <= 280
+        && request.resource.data.k is string && request.resource.data.k.size() <= 3
+        && request.resource.data.ph is string && request.resource.data.ph.size() <= 300000
+        && (request.resource.data.x.size() > 0 || request.resource.data.k.size() > 0 || request.resource.data.ph.size() > 0)
+        && request.resource.data.t is int
+        && request.resource.data.t > request.time.toMillis() - 600000
+        && request.resource.data.t < request.time.toMillis() + 600000
+        && request.resource.data.lk is list && request.resource.data.lk.size() == 0;
+    }
+
+    // post pubblici: visibili a tutti gli utenti registrati
+    match /pub/{pid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && keys(['u','n','x','t','k','ph','lk'])
+        && request.resource.data.u == request.auth.uid
+        && request.resource.data.n is string
+        && get(/databases/$(db)/documents/users/$(request.auth.uid)).data.n == request.resource.data.n
+        && postOk();
+      allow update: if likeOnly();
+      allow delete: if request.auth != null && resource.data.u == request.auth.uid;
+    }
+
+    match /nicknames/{n} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && n.matches('^[a-z0-9]{3,16}$')
+        && keys(['u']) && request.resource.data.u == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      function seen() { return request.auth != null && (request.auth.uid == uid ||
+        (exists(/databases/$(db)/documents/users/$(uid)/f/$(request.auth.uid))
+         && get(/databases/$(db)/documents/users/$(uid)/f/$(request.auth.uid)).data.s == 'a'
+         && !exists(/databases/$(db)/documents/users/$(uid)/bl/$(request.auth.uid)))); }
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && keys(['n','c','s','st'])
+        && request.resource.data.n is string && request.resource.data.n.matches('^[a-z0-9]{3,16}$')
+        && get(/databases/$(db)/documents/nicknames/$(request.resource.data.n)).data.u == uid
+        && request.resource.data.s == '' && request.resource.data.st == 0;
+      allow update: if request.auth != null && request.auth.uid == uid
+        && keys(['n','c','s','st','a','l','ph','wk','wc'])
+        && request.resource.data.n == resource.data.n
+        && request.resource.data.c == resource.data.c
+        && request.resource.data.s is string && request.resource.data.s.size() <= 140
+        && request.resource.data.st is int
+        && request.resource.data.get('a', '') is string && request.resource.data.get('a', '').size() <= 8
+        && request.resource.data.get('l', '') is string && request.resource.data.get('l', '').size() <= 560
+        && request.resource.data.get('ph', '') is string && request.resource.data.get('ph', '').size() <= 24000
+        && request.resource.data.get('wk', '') is string && request.resource.data.get('wk', '').size() <= 10
+        && request.resource.data.get('wc', 0) is int && request.resource.data.get('wc', 0) >= 0
+        && ((request.resource.data.get('wk', '') == resource.data.get('wk', '')
+             && request.resource.data.get('wc', 0) <= resource.data.get('wc', 0) + 1)
+            || request.resource.data.get('wc', 0) <= 1);
+
+      match /p/{pid} {
+        allow read: if seen();
+        allow create: if request.auth != null && request.auth.uid == uid
+          && keys(['x','t','k','ph','lk'])
+          && postOk();
+        allow update: if seen() && likeOnly();
+        allow delete: if request.auth != null && request.auth.uid == uid;
+      }
+
+      match /f/{fid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow create: if request.auth != null && uid != fid
+          && keys(['n','s','t'])
+          && request.resource.data.n is string && request.resource.data.n.size() <= 16
+          && request.resource.data.t is int
+          && !exists(/databases/$(db)/documents/users/$(uid)/bl/$(fid))
+          && !exists(/databases/$(db)/documents/users/$(fid)/bl/$(uid))
+          && ((request.auth.uid == uid && request.resource.data.s == 'o')
+           || (request.auth.uid == fid && request.resource.data.s == 'i'));
+        allow update: if request.auth != null
+          && request.resource.data.s == 'a'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['s'])
+          && ((request.auth.uid == uid && resource.data.s == 'i')
+           || (request.auth.uid == fid && resource.data.s == 'o'));
+        allow delete: if request.auth != null && (request.auth.uid == uid || request.auth.uid == fid);
+      }
+
+      match /bl/{bid} {
+        allow read, delete: if request.auth != null && request.auth.uid == uid;
+        allow create: if request.auth != null && request.auth.uid == uid && uid != bid
+          && keys(['n','t']) && request.resource.data.n is string
+          && request.resource.data.n.size() <= 16 && request.resource.data.t is int;
+      }
+    }
+
+    match /chats/{cid}/m/{mid} {
+      function ids() { return cid.split('_'); }
+      function other() { return ids()[0] == request.auth.uid ? ids()[1] : ids()[0]; }
+      allow read: if request.auth != null && request.auth.uid in ids();
+      allow create: if request.auth != null
+        && ids().size() == 2 && ids()[0] != ids()[1] && request.auth.uid in ids()
+        && keys(['u','n','x','t'])
+        && request.resource.data.u == request.auth.uid
+        && request.resource.data.n is string && request.resource.data.n.size() <= 16
+        && request.resource.data.x is string
+        && request.resource.data.x.size() > 0 && request.resource.data.x.size() <= 200
+        && request.resource.data.t is int
+        && request.resource.data.t > request.time.toMillis() - 600000
+        && request.resource.data.t < request.time.toMillis() + 600000
+        && get(/databases/$(db)/documents/users/$(request.auth.uid)/f/$(other())).data.s == 'a'
+        && !exists(/databases/$(db)/documents/users/$(other())/bl/$(request.auth.uid))
+        && !exists(/databases/$(db)/documents/users/$(request.auth.uid)/bl/$(other()));
+    }
+  }
+}
